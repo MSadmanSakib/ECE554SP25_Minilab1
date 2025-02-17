@@ -1,16 +1,11 @@
-module Minilab1 #
+module Minilab1 
 (
-  // Parameters
-  parameter DATA_WIDTH = 8,
-  parameter MAC_COUNT = 8,
-  parameter MEM_ADDR_WIDTH = 32,
-  parameter MEM_DATA_WIDTH = 64
-)
-(
-  input wire clk,
-  input wire start,
-  input wire clear,
-  output wire [DATA_WIDTH*3-1:0] C_out [0:MAC_COUNT-1],
+
+  	//////////// CLOCK //////////
+	input 		          		CLOCK2_50,
+	input 		          		CLOCK3_50,
+	input 		          		CLOCK4_50,
+	input 		          		CLOCK_50,
   
   	//////////// SEG7 //////////
 	output	reg	     [6:0]		HEX0,
@@ -32,6 +27,12 @@ module Minilab1 #
 
   wire reset_n;
   assign reset_n = KEY[0];
+  
+// Parameters
+localparam DATA_WIDTH = 8;
+localparam MAC_COUNT = 8;
+localparam MEM_ADDR_WIDTH = 32;
+localparam MEM_DATA_WIDTH = 64;
 
 parameter HEX_0 = 7'b1000000;		// zero
 parameter HEX_1 = 7'b1111001;		// one
@@ -51,14 +52,18 @@ parameter HEX_14 = 7'b0000110;	// fourteen
 parameter HEX_15 = 7'b0001110;	// fifteen
 parameter OFF   = 7'b1111111;		// all off
 
-
+  logic start;
+  wire clear;
+  wire [DATA_WIDTH*3-1:0] C_out [0:MAC_COUNT-1];
+  assign start = ~KEY[1];
+  assign clear = ~KEY[2];
 
  // FIFO signals
   wire wren_A, wren_B;
-  wire [DATA_WIDTH-1:0] A_data [0:MAC_COUNT-1]; 
-  wire [DATA_WIDTH-1:0] B_data; 
+  logic [DATA_WIDTH-1:0] A_data [0:MAC_COUNT-1], A_data_pipe [0:MAC_COUNT-1]; 
+  logic [DATA_WIDTH-1:0] B_data, B_data_pipe; 
   wire start_mult;
-  wire stop;
+  logic stop, stop_pipe;
   wire [2:0]state;
   wire Done;
 
@@ -71,7 +76,7 @@ parameter OFF   = 7'b1111111;		// all off
 
   // Memory module instance
   mem_wrapper memory (
-    .clk(clk),
+    .clk(CLOCK_50),
     .reset_n(reset_n),
     .address(address),
     .read(read),
@@ -82,7 +87,7 @@ parameter OFF   = 7'b1111111;		// all off
 
   // FIFO Filler instance
   Fill_Fifo fifo_filler (
-    .clk(clk),
+    .clk(CLOCK_50),
     .reset_n(reset_n),
     .address(address),
     .read(read),
@@ -90,22 +95,37 @@ parameter OFF   = 7'b1111111;		// all off
     .readdatavalid(readdatavalid),
     .waitrequest(waitrequest),
     .A_data(A_data),
-	.B_data(B_data),
+	 .B_data(B_data),
     .start(start),
     .start_mult(start_mult),
 	.stop(stop),
 	.state_out(state)
   );
+  
+  always_ff @(posedge CLOCK_50 or negedge reset_n) begin
+    if (!reset_n) begin
+        A_data_pipe <= '{default: 0};
+        B_data_pipe <= 0;
+		  stop_pipe <= 0;
+		 // start <= 1;
+    end
+    else begin
+	    A_data_pipe <= A_data;
+        B_data_pipe <= B_data;
+        stop_pipe <= stop;
+		 // start <= 0;
+    end
+end
 
   // Matrix Multiplication instance
   Matrix_Mult mat_mult (
-    .clk(clk),
+    .clk(CLOCK_50),
     .rst_n(reset_n),
     .Clr(clear), // Clear signal 
-    .A_in(A_data),  // Array of rows for matrix A
-    .B_in(B_data),  // Array for vector B
+    .A_in(A_data_pipe),  // Array of rows for matrix A
+    .B_in(B_data_pipe),  // Array for vector B
     .start(start_mult),
-	.stop(stop),
+	.stop(stop_pipe),
     .C_out(C_out),
 	.done_final(Done)
   );

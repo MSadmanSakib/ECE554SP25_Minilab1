@@ -36,7 +36,7 @@ module Fill_Fifo #
   reg rden_A [0:FIFO_DEPTH-1] ;                  // Read enable for each FIFO A
   reg wren_A [0:FIFO_DEPTH-1] ;                  // Write enable for FIFO A
   reg rden_B;                                   // Read enable for FIFO B
-  logic wren_B,count_A, count_B, count_j, clear_i_A, count_address;                                   // Write enable for FIFO B
+  logic wren_B,count_A, count_B, count_j, clear_i_A, count_address, clear_address;                                   // Write enable for FIFO B
   wire A_full [FIFO_DEPTH-1:0]  ; 
   wire B_full;
   wire A_empty [FIFO_DEPTH-1:0] ;
@@ -44,7 +44,7 @@ module Fill_Fifo #
   logic [2:0] i_A, i_B, j;
 
   // State encoding
-  typedef enum logic [2:0] {IDLE, LOAD_B, READ_MEM, WRITE_FIFO_A, DONE_IN, READ_FIFOS} state_t;
+  typedef enum logic [2:0] {IDLE, LOAD_B, READ_MEM, WRITE_FIFO_A, DONE_IN, READ_FIFOS, RESET} state_t;
   
   state_t state, next_state; // Current state and next state
   
@@ -56,36 +56,45 @@ module Fill_Fifo #
   genvar i;
   generate
     for (i = 0; i < FIFO_DEPTH; i = i + 1) begin : fifo_A
-      FIFO #(
-        .DEPTH(FIFO_DEPTH),
-        .DATA_WIDTH(DATA_WIDTH)
-      ) fifo_A_inst (
-        .clk(clk),
-        .rst_n(reset_n),
-        .rden(rden_A[i]), // Assign read enable for each FIFO
-        .wren(wren_A[i]), // Assign write enable for FIFO A
-        .i_data(mem_dataA), // Split mem_data
-        .o_data(A_data[i]),
-        .full(A_full[i]),           
-        .empty(A_empty[i])           
+      FIFO_IP //#(
+       // .DEPTH(FIFO_DEPTH),
+       // .DATA_WIDTH(DATA_WIDTH))
+       fifo_A_inst ( 
+	    .data (mem_dataA),
+		.rdclk (clk),
+		.rdreq (rden_A[i]),
+		.wrclk (clk),
+		.wrreq (wren_A[i]),
+		.q (A_data[i]),
+		.rdempty (A_empty[i]),
+		.wrfull (A_full[i])		
       );
+
     end
   endgenerate 
   
 
   // FIFO for Vector B (1 row/column)
-  FIFO #(
-    .DEPTH(FIFO_DEPTH),
-    .DATA_WIDTH(DATA_WIDTH)
-  ) fifo_B_inst (
-    .clk(clk),
+  FIFO_IP //#(
+       // .DEPTH(FIFO_DEPTH),
+       // .DATA_WIDTH(DATA_WIDTH))
+   fifo_B_inst (
+    /*.clk(clk),
     .rst_n(reset_n),
     .rden(rden_B),     // Read enable for FIFO B
     .wren(wren_B),     // Write enable for FIFO B
     .i_data(mem_dataB), // First byte of mem_data for B
     .o_data(B_data),
     .full(B_full),           
-    .empty(B_empty)           
+    .empty(B_empty)  */ 
+		.data (mem_dataB),
+		.rdclk (clk),
+		.rdreq (rden_B),
+		.wrclk (clk),
+		.wrreq (wren_B),
+		.q (B_data),
+		.rdempty (B_empty),
+		.wrfull (B_full)	 
   );
   
   
@@ -120,6 +129,9 @@ module Fill_Fifo #
         if (count_address) begin
             address <= address + 1;
         end
+		  if (clear_address) begin
+            address <= 0;
+        end
 		if (state == READ_FIFOS) begin
 			rden_A[i_A] <= 1'b1;  // Enable reading when in READ_FIFOS
 			if (A_empty[i_A]) begin
@@ -132,6 +144,7 @@ end
   // State machine for FIFO filling
   always_ff @(posedge clk or negedge reset_n) begin
     if (!reset_n) begin
+		state <= IDLE;
     end 
 	else begin
       state <= next_state;  // Update state
@@ -146,6 +159,7 @@ end
 	  fifo_out_done = 0;
       B_loaded = 0;
       count_address = 0;
+		clear_address = 0;
       //rden_A= '{default: 0};      // Initialize rden_A to 0 (no reads)
       wren_A = '{default: 0};      // Deassert write for A
       rden_B = 0;      // Initialize rden_B to 0 (no reads)
@@ -162,6 +176,7 @@ end
 
     case(state)
       IDLE: begin
+		  clear_address = 1;
         if (start) begin
           read = 1;            // Issue read request
         end
@@ -199,14 +214,13 @@ end
       end
 
       WRITE_FIFO_A: begin
-        
           mem_data = readdata; // Latch memory data
           mem_dataA = mem_data[((FIFO_DEPTH - 1) - j)*DATA_WIDTH +: DATA_WIDTH]; 
           wren_A[i_A] = 1;          // Write to FIFO A
 		  count_j = 1;
           if (A_full[i_A]) begin
             wren_A[i_A] = 0;
-			count_j = 0;
+				count_j = 0;
             count_A = 1;         // Increment i_A	
             count_address = 1; // Increment address for next read
             next_state = READ_MEM;			
@@ -221,7 +235,7 @@ end
       end
 
       DONE_IN: begin
-	  clear_i_A = 0;
+		clear_i_A = 0;
         if (A_full[FIFO_DEPTH-1] && B_full) begin
           fifo_in_done = 1;   // Assert done signal
           next_state = READ_FIFOS; 
@@ -240,9 +254,14 @@ end
         if (A_empty[FIFO_DEPTH-1]) begin
           //rden_A = '{default: 0};
 		  fifo_out_done = 1;   // Assert done signal
-		  next_state = IDLE;			
+		  next_state = RESET;			
         end	
       end
+		
+		RESET: begin
+		  // wait till reset
+		
+		end
    default: next_state = IDLE;
     endcase
   end

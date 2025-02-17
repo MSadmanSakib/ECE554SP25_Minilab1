@@ -13,11 +13,11 @@ output logic [DATA_WIDTH*3-1:0] Cout
 );
 
   // internal logic signals
- logic [DATA_WIDTH*3-1:0] accum, check;
- assign check = Ain * Bin;
+ logic [DATA_WIDTH*3-1:0] accum, mult;
 always_ff @(posedge clk, negedge rst_n) begin
     if (!rst_n) begin
         accum <= 0;
+		  mult <= 0;
     end
     else if (Clr) begin
         accum <= 0;
@@ -25,9 +25,11 @@ always_ff @(posedge clk, negedge rst_n) begin
     else if (En) begin
         if (Ain === 'x || Bin === 'x) begin
             accum <= 0; // Reset if inputs are unknown
+				mult <= 0;
         end
         else begin
-            accum <= (Ain * Bin) + accum;
+				mult <= (Ain * Bin);
+            accum <= mult + accum;
         end
     end
 end

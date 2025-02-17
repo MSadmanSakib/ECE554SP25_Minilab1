@@ -19,18 +19,19 @@ module Matrix_Mult #
   logic En_prop [MAC_COUNT];
   logic [DATA_WIDTH-1:0] B_in_flopped;
   logic [DATA_WIDTH-1:0] B_prop [MAC_COUNT];  // Propagated enable and B signals
-  logic enable, stop_flopped;
+  logic enable, stop_flopped, stop_double_flopped;
 
   // Initialize En and B propagation
-  assign En_prop[0] = stop_flopped ? 0 : enable;  // Start the enable signal
+  assign En_prop[0] = stop_double_flopped ? 0 : enable;  // Start the enable signal
   assign B_prop[0] = B_in_flopped;
   
-  assign done_final = stop_flopped;
+  assign done_final = stop_double_flopped;
   
   always_ff @(posedge clk or negedge rst_n) begin
     if(!rst_n)begin
 	  enable <= 0;
 	  stop_flopped <= 0;
+	  stop_double_flopped <= 0;
 	  B_in_flopped <= 0;
 	end
 	else if(start & (~enable)) begin
@@ -38,6 +39,7 @@ module Matrix_Mult #
 	end
 	else begin
 	  stop_flopped <= stop;
+	  stop_double_flopped <= stop_flopped;
 	  B_in_flopped <= B_in;
 	end
   end
